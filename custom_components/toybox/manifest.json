@@ -1,0 +1,13 @@
+{
+  "domain": "toybox",
+  "name": "ToyBox 3D Printer",
+  "codeowners": ["@sgarrity"],
+  "config_flow": true,
+  "documentation": "https://github.com/sgarrity/ha-toybox",
+  "integration_type": "device",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "0.1.0",
+  "dependencies": [],
+  "after_dependencies": []
+}

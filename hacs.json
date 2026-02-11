@@ -1,0 +1,5 @@
+{
+  "name": "ToyBox 3D Printer",
+  "render_readme": true,
+  "domains": ["sensor", "binary_sensor"]
+}

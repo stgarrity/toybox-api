@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to ToyBox",
+        "description": "Enter your make.toys account credentials.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to make.toys. Check your internet connection.",
+      "invalid_auth": "Invalid email or password.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This ToyBox account is already configured."
+    }
+  }
+}
