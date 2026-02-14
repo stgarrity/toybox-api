@@ -39,7 +39,7 @@ Custom Home Assistant integration for the [ToyBox 3D Printer](https://www.toybox
 
 ## Status
 
-⚠️ **Pre-release** — The API client uses placeholder endpoints that need to be updated after reverse-engineering the make.toys Meteor API. The integration structure is complete and ready for API endpoint discovery.
+🟡 **Beta** — The API client implements the real Meteor DDP protocol (WebSocket) with proper authentication, subscriptions, and collection sync. Time remaining is calculated from `print_completion_time - now`, matching the make.toys web app logic. Needs live testing with an active print to verify the full flow.
 
 ## Development
 
@@ -47,12 +47,12 @@ The project follows the two-project pattern:
 
 ```
 ha-toybox/
-├── toybox_api/              # Standalone Python API client
+├── toybox_api/              # Standalone Python API client (Meteor DDP)
 │   ├── __init__.py
-│   ├── client.py            # Main API client (stubbed endpoints)
-│   ├── models.py            # Data models
+│   ├── client.py            # DDP WebSocket client
+│   ├── models.py            # Data models (matches Meteor schemas)
 │   ├── exceptions.py        # Custom exceptions
-│   └── const.py             # Constants and URLs
+│   └── const.py             # DDP URLs, subscription/method names
 ├── custom_components/
 │   └── toybox/              # Home Assistant integration
 │       ├── __init__.py      # Integration setup
