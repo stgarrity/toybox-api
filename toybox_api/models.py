@@ -116,6 +116,29 @@ class PrintRequest:
 
     @classmethod
     def from_dict(cls, data: dict) -> PrintRequest:
+        """Parse from a DDP collection document or getPrintRequestsByIds result.
+
+        The method call returns: {toy: {...}, models: [...], request: {...}}
+        The subscription returns the request document directly.
+        """
+        # Handle getPrintRequestsByIds response format
+        if "request" in data and "toy" in data:
+            req = data["request"]
+            toy = data.get("toy", {})
+            # Merge toy name into active_print_model for consistency
+            apm = req.get("active_print_model", {})
+            if isinstance(apm, dict) and not apm.get("name") and toy.get("name"):
+                apm["name"] = toy["name"]
+            if isinstance(apm, dict) and not apm.get("image") and toy.get("images"):
+                images = toy["images"]
+                if images:
+                    apm["image"] = images[0]
+            req["active_print_model"] = apm
+            # Also carry over parent_toy_id if not present
+            if not req.get("parent_toy_id"):
+                req["parent_toy_id"] = toy.get("_id")
+            data = req
+
         return cls(
             id=data.get("_id", ""),
             print_owner=data.get("print_owner", ""),

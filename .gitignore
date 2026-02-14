@@ -26,3 +26,7 @@ Thumbs.db
 
 # Home Assistant
 *.log
+
+# Environment / credentials
+.env
+.env.*
