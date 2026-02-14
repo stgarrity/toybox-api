@@ -35,6 +35,19 @@ async def async_setup_entry(
     ])
 
 
+def _device_info(coordinator: ToyBoxDataUpdateCoordinator) -> DeviceInfo:
+    """Build DeviceInfo from coordinator data."""
+    printer = coordinator.data.printer
+    return DeviceInfo(
+        identifiers={(DOMAIN, printer.printer_id)},
+        name=printer.display_name,
+        manufacturer="ToyBox Labs",
+        model=f"ToyBox ({printer.model})",
+        sw_version=printer.firmware_version,
+        hw_version=printer.hardware_id,
+    )
+
+
 class ToyBoxOnlineSensor(
     CoordinatorEntity[ToyBoxDataUpdateCoordinator], BinarySensorEntity
 ):
@@ -45,16 +58,10 @@ class ToyBoxOnlineSensor(
         super().__init__(coordinator)
         printer = coordinator.data.printer
         self._attr_unique_id = f"{printer.printer_id}_online"
-        self._attr_name = f"ToyBox {printer.name} Online"
+        self._attr_name = f"{printer.display_name} Online"
         self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, printer.printer_id)},
-            name=f"ToyBox {printer.name}",
-            manufacturer="ToyBox Labs",
-            model="ToyBox 3D Printer",
-            sw_version=printer.firmware_version,
-        )
+        self._attr_device_info = _device_info(coordinator)
 
     @property
     def is_on(self) -> bool:
@@ -72,16 +79,10 @@ class ToyBoxPrintingActiveSensor(
         super().__init__(coordinator)
         printer = coordinator.data.printer
         self._attr_unique_id = f"{printer.printer_id}_printing"
-        self._attr_name = f"ToyBox {printer.name} Printing"
+        self._attr_name = f"{printer.display_name} Printing"
         self._attr_device_class = BinarySensorDeviceClass.RUNNING
         self._attr_icon = "mdi:printer-3d-nozzle"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, printer.printer_id)},
-            name=f"ToyBox {printer.name}",
-            manufacturer="ToyBox Labs",
-            model="ToyBox 3D Printer",
-            sw_version=printer.firmware_version,
-        )
+        self._attr_device_info = _device_info(coordinator)
 
     @property
     def is_on(self) -> bool:

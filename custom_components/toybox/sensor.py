@@ -35,33 +35,26 @@ class ToyBoxSensorEntityDescription(SensorEntityDescription):
     attributes_fn: Callable[[ToyBoxData], dict[str, Any]] | None = None
 
 
-def _format_duration(seconds: int | None) -> str | None:
-    """Format seconds as H:MM:SS string."""
-    if seconds is None:
-        return None
-    hours, remainder = divmod(int(seconds), 3600)
-    minutes, secs = divmod(remainder, 60)
-    if hours > 0:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
-    return f"{minutes}:{secs:02d}"
-
-
 SENSOR_TYPES: tuple[ToyBoxSensorEntityDescription, ...] = (
     ToyBoxSensorEntityDescription(
         key="print_status",
         name="Print Status",
         icon="mdi:printer-3d",
         device_class=SensorDeviceClass.ENUM,
-        options=["idle", "printing", "completed", "paused", "cancelled", "error", "unknown"],
-        value_fn=lambda data: data.printer.state.value,
+        options=["idle", "printing", "heating", "paused", "cancelling", "completed", "cancelled", "error", "unknown"],
+        value_fn=lambda data: data.print_state.value,
+        attributes_fn=lambda data: {
+            "raw_state": data.current_request.state.value if data.current_request else None,
+            "ui_state": data.printer.ui_state,
+        },
     ),
     ToyBoxSensorEntityDescription(
         key="current_print_name",
         name="Current Print",
         icon="mdi:cube-outline",
         value_fn=lambda data: (
-            data.printer.current_job.name
-            if data.printer.current_job
+            data.current_request.print_name
+            if data.current_request and data.current_request.is_active
             else None
         ),
     ),
@@ -72,8 +65,8 @@ SENSOR_TYPES: tuple[ToyBoxSensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: (
-            data.printer.current_job.progress_percent
-            if data.printer.current_job
+            data.current_request.progress_percent
+            if data.current_request and data.current_request.is_active
             else None
         ),
     ),
@@ -84,8 +77,8 @@ SENSOR_TYPES: tuple[ToyBoxSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         value_fn=lambda data: (
-            data.printer.current_job.time_remaining_seconds
-            if data.printer.current_job
+            data.current_request.remaining_seconds
+            if data.current_request and data.current_request.is_active
             else None
         ),
     ),
@@ -96,8 +89,8 @@ SENSOR_TYPES: tuple[ToyBoxSensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.DURATION,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         value_fn=lambda data: (
-            data.printer.current_job.time_elapsed_seconds
-            if data.printer.current_job
+            data.current_request.elapsed_seconds
+            if data.current_request and data.current_request.is_active
             else None
         ),
     ),
@@ -106,18 +99,21 @@ SENSOR_TYPES: tuple[ToyBoxSensorEntityDescription, ...] = (
         name="Last Print",
         icon="mdi:cube-send",
         value_fn=lambda data: (
-            data.last_job.name if data.last_job else None
+            data.last_completed_request.print_name
+            if data.last_completed_request
+            else None
         ),
         attributes_fn=lambda data: (
             {
-                "status": data.last_job.state.value,
+                "status": data.last_completed_request.simplified_state.value,
+                "end_reason": data.last_completed_request.end_reason,
                 "completed_at": (
-                    data.last_job.completed_at.isoformat()
-                    if data.last_job and data.last_job.completed_at
+                    data.last_completed_request.print_completion_time.isoformat()
+                    if data.last_completed_request and data.last_completed_request.print_completion_time
                     else None
                 ),
             }
-            if data.last_job
+            if data.last_completed_request
             else {}
         ),
     ),
@@ -126,10 +122,24 @@ SENSOR_TYPES: tuple[ToyBoxSensorEntityDescription, ...] = (
         name="Last Print Status",
         icon="mdi:check-circle-outline",
         device_class=SensorDeviceClass.ENUM,
-        options=["completed", "failed", "cancelled", "unknown"],
+        options=["completed", "cancelled", "error", "unknown"],
         value_fn=lambda data: (
-            data.last_job.state.value if data.last_job else None
+            data.last_completed_request.simplified_state.value
+            if data.last_completed_request
+            else None
         ),
+    ),
+    ToyBoxSensorEntityDescription(
+        key="printer_model",
+        name="Printer Model",
+        icon="mdi:printer-3d-nozzle-heat-outline",
+        value_fn=lambda data: data.printer.model,
+        attributes_fn=lambda data: {
+            "hardware_id": data.printer.hardware_id,
+            "firmware": data.printer.firmware_version,
+            "extruder": data.printer.extruder,
+            "z_beam": data.printer.z_beam,
+        },
     ),
 )
 
@@ -168,10 +178,11 @@ class ToyBoxSensor(
         self._attr_unique_id = f"{printer.printer_id}_{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, printer.printer_id)},
-            name=f"ToyBox {printer.name}",
+            name=printer.display_name,
             manufacturer="ToyBox Labs",
-            model="ToyBox 3D Printer",
+            model=f"ToyBox ({printer.model})",
             sw_version=printer.firmware_version,
+            hw_version=printer.hardware_id,
         )
 
     @property

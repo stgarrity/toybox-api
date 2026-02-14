@@ -52,15 +52,18 @@ class ToyBoxDataUpdateCoordinator(DataUpdateCoordinator[ToyBoxData]):
     async def _async_update_data(self) -> ToyBoxData:
         """Fetch data from the ToyBox API.
 
-        Dynamically adjusts polling interval:
-        - 30 seconds when a print is active
-        - 5 minutes when idle
+        Since we maintain a persistent DDP WebSocket connection, "fetching"
+        really means reading from the locally-synced Meteor collections.
+        The actual data arrives in real-time via DDP subscription messages.
+
+        We still dynamically adjust the polling interval so HA entities
+        update more frequently during active prints.
         """
         try:
             data = await self.client.get_all_data()
 
             # Dynamic polling: poll faster during active prints
-            if data.is_printing:
+            if data.is_printing or data.is_busy:
                 if self.update_interval != ACTIVE_SCAN_INTERVAL:
                     _LOGGER.debug("Print active — switching to 30s polling")
                     self.update_interval = ACTIVE_SCAN_INTERVAL

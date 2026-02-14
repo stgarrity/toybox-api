@@ -12,7 +12,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from toybox_api import ToyBoxClient, ConnectionError as ToyBoxConnectionError
+from toybox_api import ToyBoxClient, ConnectionError as ToyBoxConnectionError, AuthenticationError
 
 from .const import CONF_EMAIL, CONF_PASSWORD, DOMAIN
 from .coordinator import ToyBoxDataUpdateCoordinator
@@ -27,16 +27,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     client = ToyBoxClient()
-    await client.__aenter__()
 
     try:
+        # Connect via DDP WebSocket and authenticate
+        await client.connect()
         await client.authenticate(
             entry.data[CONF_EMAIL],
             entry.data[CONF_PASSWORD],
         )
+
+        # Subscribe to printer data — the user's printer IDs come from
+        # the user profile data pushed by the server after login.
+        # We need to wait for the user-data-small subscription to populate,
+        # then subscribe to printer-specific data.
+        # For now, the subscription will auto-populate the collections.
+        await client.subscribe("user-data-small")
+
     except ToyBoxConnectionError as err:
         await client.close()
         raise ConfigEntryNotReady(f"Cannot connect to make.toys: {err}") from err
+    except AuthenticationError as err:
+        await client.close()
+        raise ConfigEntryNotReady(f"Authentication failed: {err}") from err
 
     coordinator = ToyBoxDataUpdateCoordinator(hass, client, entry)
     await coordinator.async_config_entry_first_refresh()

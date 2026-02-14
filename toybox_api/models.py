@@ -1,81 +1,301 @@
-"""Data models for the ToyBox API."""
+"""Data models for the ToyBox API.
+
+These models match the Meteor collections discovered from the make.toys
+JavaScript bundle:
+- PrinterStates (PrinterStateV2 schema)
+- ToyPrints / PrintRequest schema
+- PrintQueue / QueueEntry schemas
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+class PrinterModel(StrEnum):
+    """Hardware model of the printer."""
+    ESP32 = "esp32"
+    ESP8266 = "esp8266"
+    BRAVO = "bravo"
+    ALPHA_3 = "alpha_3"
+    CHARLIE = "charlie"
+
+
+class UiState(StrEnum):
+    """Printer UI state from PrinterStateV2 schema."""
+    BUSY = "busy"
+    NONE = "none"
+    REQUEST_END = "request_end"
+    INSERTING = "inserting"
+    REQUEST_INSERT = "request_insert"
+    REQUEST_REMOVE = "request_remove"
+    REQUESTED = "requested"
+    HEATING = "heating"
+    READY = "ready"
+    REMOVING = "removing"
+    FAILED_PRINT = "failed_print"
+    UNKNOWN = "unknown"
+
+
+class PrintRequestState(StrEnum):
+    """State of a print request (from PrinterHelpers analysis)."""
+    REQUESTED = "requested"
+    PREPARING = "preparing"
+    HEATING_UP = "HeatingUp"
+    PRINTING = "Printing"
+    PAUSED = "paused"
+    REQUESTED_PAUSE = "requested_pause"
+    REQUESTED_RESUME = "requested_resume"
+    REQUESTED_CANCEL = "requested_cancel"
+    CANCELLED = "cancelled"
+    DONE = "done"
+    UNKNOWN = "unknown"
 
 
 class PrintState(StrEnum):
-    """State of the printer."""
+    """Simplified print state for HA sensor display."""
     IDLE = "idle"
     PRINTING = "printing"
-    COMPLETED = "completed"
+    HEATING = "heating"
     PAUSED = "paused"
+    CANCELLING = "cancelling"
+    COMPLETED = "completed"
     CANCELLED = "cancelled"
     ERROR = "error"
     UNKNOWN = "unknown"
 
 
 @dataclass
-class PrintJob:
-    """Represents a print job."""
-    id: str
-    name: str
-    state: PrintState
-    progress_percent: float | None = None
-    time_elapsed_seconds: int | None = None
-    time_remaining_seconds: int | None = None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
+class ActivePrintModel:
+    """The model/toy currently being printed (blackbox object from API)."""
+    id: str | None = None
+    name: str | None = None
+    image: str | None = None
+    printing_time: int | None = None  # estimated total print time in ms
+    is_user_upload: bool = False
+    collection_type: str | None = None  # "user", "public", "toymodels", "pending"
 
     @classmethod
-    def from_dict(cls, data: dict) -> PrintJob:
-        """Create a PrintJob from API response data.
-
-        NOTE: The field mappings here are placeholders. Once we capture
-        actual API responses from make.toys, we'll update the keys to
-        match the real data structure.
-        """
+    def from_dict(cls, data: dict | None) -> ActivePrintModel | None:
+        if not data:
+            return None
         return cls(
-            id=data.get("_id", data.get("id", "")),
-            name=data.get("name", data.get("toyName", "Unknown")),
-            state=_parse_state(data.get("status", data.get("state", "unknown"))),
-            progress_percent=data.get("progress", data.get("percentComplete")),
-            time_elapsed_seconds=data.get("timeElapsed", data.get("elapsedSeconds")),
-            time_remaining_seconds=data.get("timeRemaining", data.get("remainingSeconds")),
-            started_at=_parse_datetime(data.get("startedAt", data.get("createdAt"))),
-            completed_at=_parse_datetime(data.get("completedAt", data.get("finishedAt"))),
+            id=data.get("_id") or data.get("model_id"),
+            name=data.get("name"),
+            image=data.get("image"),
+            printing_time=data.get("printing_time"),
+            is_user_upload=data.get("isUserUpload", False),
+            collection_type=data.get("collectionType"),
         )
 
 
 @dataclass
+class PrintRequest:
+    """A print request from the ToyPrints collection.
+
+    Matches the PrintRequest schema from userInteractionCollections.
+    """
+    id: str
+    print_owner: str
+    state: PrintRequestState
+    is_active: bool = False
+    printer_id: str | None = None
+    active_print_model: ActivePrintModel | None = None
+    print_start_time: datetime | None = None
+    print_completion_time: datetime | None = None
+    print_duration: int | None = None  # integer, milliseconds
+    pause_start_time: datetime | None = None
+    end_reason: str | None = None  # "completed", etc.
+    error_code: int = 0
+    pause_count: int = 0
+    clean_name: str | None = None
+    parent_toy_id: str | None = None
+    is_hidden: bool = False
+    created_at: datetime | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> PrintRequest:
+        return cls(
+            id=data.get("_id", ""),
+            print_owner=data.get("print_owner", ""),
+            state=_parse_request_state(data.get("state")),
+            is_active=data.get("is_active", False),
+            printer_id=data.get("printer_id"),
+            active_print_model=ActivePrintModel.from_dict(
+                data.get("active_print_model")
+            ),
+            print_start_time=_parse_datetime(data.get("print_start_time")),
+            print_completion_time=_parse_datetime(data.get("print_completion_time")),
+            print_duration=data.get("print_duration"),
+            pause_start_time=_parse_datetime(data.get("pause_start_time")),
+            end_reason=data.get("end_reason"),
+            error_code=data.get("error_code", 0),
+            pause_count=data.get("pauseCount", 0),
+            clean_name=data.get("clean_name"),
+            parent_toy_id=data.get("parent_toy_id"),
+            is_hidden=data.get("is_hidden", False),
+            created_at=_parse_datetime(data.get("createdAt")),
+        )
+
+    @property
+    def simplified_state(self) -> PrintState:
+        """Map the raw request state to a simplified state for HA display."""
+        match self.state:
+            case PrintRequestState.PRINTING:
+                return PrintState.PRINTING
+            case PrintRequestState.HEATING_UP:
+                return PrintState.HEATING
+            case PrintRequestState.PAUSED | PrintRequestState.REQUESTED_PAUSE | PrintRequestState.REQUESTED_RESUME:
+                return PrintState.PAUSED
+            case PrintRequestState.REQUESTED_CANCEL:
+                return PrintState.CANCELLING
+            case PrintRequestState.CANCELLED:
+                return PrintState.CANCELLED
+            case PrintRequestState.DONE:
+                if self.end_reason == "completed":
+                    return PrintState.COMPLETED
+                return PrintState.CANCELLED
+            case PrintRequestState.REQUESTED | PrintRequestState.PREPARING:
+                return PrintState.PRINTING  # about to print
+            case _:
+                return PrintState.UNKNOWN
+
+    @property
+    def is_cancelled(self) -> bool:
+        return (
+            self.state == PrintRequestState.CANCELLED
+            or (self.state == PrintRequestState.DONE and self.end_reason != "completed")
+        )
+
+    @property
+    def is_completed(self) -> bool:
+        return self.state == PrintRequestState.DONE and self.end_reason == "completed"
+
+    @property
+    def is_paused(self) -> bool:
+        return self.state in (
+            PrintRequestState.PAUSED,
+            PrintRequestState.REQUESTED_PAUSE,
+        )
+
+    @property
+    def remaining_seconds(self) -> int | None:
+        """Calculate remaining print time in seconds.
+
+        Logic from make.toys countdownHooks.tsx:
+        - Normal: print_completion_time - now
+        - Paused: print_completion_time - pause_start_time (frozen countdown)
+        """
+        if not self.print_completion_time:
+            return None
+
+        if self.is_paused and self.pause_start_time:
+            delta = self.print_completion_time - self.pause_start_time
+        else:
+            now = datetime.now(timezone.utc)
+            completion = self.print_completion_time
+            if completion.tzinfo is None:
+                completion = completion.replace(tzinfo=timezone.utc)
+            delta = completion - now
+
+        seconds = int(delta.total_seconds())
+        return max(0, seconds)
+
+    @property
+    def elapsed_seconds(self) -> int | None:
+        """Calculate elapsed print time in seconds."""
+        if not self.print_start_time:
+            return None
+
+        now = datetime.now(timezone.utc)
+        start = self.print_start_time
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+
+        if self.is_paused and self.pause_start_time:
+            pause = self.pause_start_time
+            if pause.tzinfo is None:
+                pause = pause.replace(tzinfo=timezone.utc)
+            return max(0, int((pause - start).total_seconds()))
+
+        return max(0, int((now - start).total_seconds()))
+
+    @property
+    def total_seconds(self) -> int | None:
+        """Total estimated print time in seconds."""
+        if self.print_start_time and self.print_completion_time:
+            start = self.print_start_time
+            end = self.print_completion_time
+            if start.tzinfo is None:
+                start = start.replace(tzinfo=timezone.utc)
+            if end.tzinfo is None:
+                end = end.replace(tzinfo=timezone.utc)
+            return max(0, int((end - start).total_seconds()))
+        return None
+
+    @property
+    def progress_percent(self) -> float | None:
+        """Calculate progress as a percentage."""
+        total = self.total_seconds
+        elapsed = self.elapsed_seconds
+        if total and total > 0 and elapsed is not None:
+            return min(100.0, round((elapsed / total) * 100, 1))
+        return None
+
+    @property
+    def print_name(self) -> str | None:
+        """Get the display name of the print."""
+        if self.active_print_model and self.active_print_model.name:
+            return self.active_print_model.name
+        return self.clean_name
+
+
+@dataclass
 class PrinterStatus:
-    """Represents the printer's current status."""
+    """Represents a printer from the PrinterStates collection.
+
+    Matches the PrinterStateV2 schema from printerCollections.ts.
+    """
     printer_id: str
-    name: str
+    name: str = "ToyBox"
+    model: str = "esp32"
     is_online: bool = False
-    state: PrintState = PrintState.UNKNOWN
-    current_job: PrintJob | None = None
+    ui_state: str = "none"
+    hardware_id: str | None = None
     firmware_version: str | None = None
+    extruder: str | None = None  # PLA, TPU, Unknown, none
+    z_beam: str | None = None  # standard, tall, none, Unknown
+    last_ping: datetime | None = None
+    last_completed_print: str | None = None
+    calibration_value: int | None = None
+    owners: list[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict) -> PrinterStatus:
-        """Create PrinterStatus from API response data.
-
-        NOTE: Field mappings are placeholders until we capture real API data.
-        """
-        current_job_data = data.get("currentJob", data.get("activeJob"))
-        current_job = PrintJob.from_dict(current_job_data) if current_job_data else None
-
         return cls(
-            printer_id=data.get("_id", data.get("id", "")),
-            name=data.get("name", data.get("printerName", "ToyBox")),
-            is_online=data.get("online", data.get("isOnline", False)),
-            state=_parse_state(data.get("status", data.get("state", "unknown"))),
-            current_job=current_job,
-            firmware_version=data.get("firmwareVersion", data.get("firmware")),
+            printer_id=data.get("_id", ""),
+            name=data.get("name", "ToyBox"),
+            model=data.get("model", "esp32"),
+            is_online=data.get("online", False),
+            ui_state=data.get("ui_state", "none"),
+            hardware_id=data.get("hardware_id"),
+            firmware_version=data.get("version") or data.get("spversion"),
+            extruder=data.get("extruder"),
+            z_beam=data.get("zBeam"),
+            last_ping=_parse_datetime(data.get("last_ping")),
+            last_completed_print=data.get("last_completed_print"),
+            calibration_value=data.get("calibrationValue"),
+            owners=data.get("owners", []),
         )
+
+    @property
+    def display_name(self) -> str:
+        """Friendly display name matching make.toys logic."""
+        prefix = "Comet" if self.model == "bravo" else "ToyBox"
+        if self.hardware_id and self.hardware_id.lower() != "pending":
+            return f"{prefix} ({self.hardware_id[-6:]})"
+        return prefix
 
 
 @dataclass
@@ -85,60 +305,60 @@ class ToyBoxData:
     This is what the DataUpdateCoordinator returns.
     """
     printer: PrinterStatus
-    last_job: PrintJob | None = None
-    print_history: list[PrintJob] = field(default_factory=list)
+    current_request: PrintRequest | None = None
+    last_completed_request: PrintRequest | None = None
 
     @property
     def is_printing(self) -> bool:
-        """Return True if a print is currently active."""
-        return self.printer.state == PrintState.PRINTING
+        """Return True if a print is actively running."""
+        if self.current_request and self.current_request.is_active:
+            return self.current_request.state in (
+                PrintRequestState.PRINTING,
+                PrintRequestState.HEATING_UP,
+                PrintRequestState.REQUESTED,
+                PrintRequestState.PREPARING,
+            )
+        return False
 
     @property
-    def active_job(self) -> PrintJob | None:
-        """Return the active print job, if any."""
-        if self.is_printing and self.printer.current_job:
-            return self.printer.current_job
-        return None
+    def is_busy(self) -> bool:
+        """Return True if printer is doing anything (printing, pausing, etc)."""
+        return self.current_request is not None and self.current_request.is_active
+
+    @property
+    def print_state(self) -> PrintState:
+        """Get the simplified print state."""
+        if self.current_request and self.current_request.is_active:
+            return self.current_request.simplified_state
+        return PrintState.IDLE
 
 
-def _parse_state(raw: str | None) -> PrintState:
-    """Parse a raw state string into a PrintState enum."""
+def _parse_request_state(raw: str | None) -> PrintRequestState:
+    """Parse a raw state string into a PrintRequestState."""
     if not raw:
-        return PrintState.UNKNOWN
-    raw = raw.lower().strip()
+        return PrintRequestState.UNKNOWN
     try:
-        return PrintState(raw)
+        return PrintRequestState(raw)
     except ValueError:
-        # Map common variations
-        mapping = {
-            "complete": PrintState.COMPLETED,
-            "done": PrintState.COMPLETED,
-            "finished": PrintState.COMPLETED,
-            "active": PrintState.PRINTING,
-            "in_progress": PrintState.PRINTING,
-            "inprogress": PrintState.PRINTING,
-            "running": PrintState.PRINTING,
-            "pause": PrintState.PAUSED,
-            "cancel": PrintState.CANCELLED,
-            "fail": PrintState.ERROR,
-            "failed": PrintState.ERROR,
-            "offline": PrintState.IDLE,
-        }
-        return mapping.get(raw, PrintState.UNKNOWN)
+        return PrintRequestState.UNKNOWN
 
 
-def _parse_datetime(raw: str | int | None) -> datetime | None:
-    """Parse a datetime from API response (string or epoch)."""
+def _parse_datetime(raw) -> datetime | None:
+    """Parse a datetime from Meteor (can be Date object, ISO string, or epoch)."""
     if raw is None:
         return None
+    # Meteor sends dates as {"$date": epoch_ms} in DDP, or as Date objects
+    if isinstance(raw, dict) and "$date" in raw:
+        raw = raw["$date"]
     if isinstance(raw, (int, float)):
-        # Epoch seconds or milliseconds
         if raw > 1e12:
             raw = raw / 1000  # milliseconds to seconds
-        return datetime.fromtimestamp(raw)
+        return datetime.fromtimestamp(raw, tz=timezone.utc)
     if isinstance(raw, str):
         try:
             return datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError:
             return None
+    if isinstance(raw, datetime):
+        return raw
     return None

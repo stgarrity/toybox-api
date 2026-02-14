@@ -25,6 +25,7 @@ async def validate_input(hass: HomeAssistant, data: dict) -> dict:
 
     client = ToyBoxClient()
     try:
+        await client.connect()
         await client.authenticate(data[CONF_EMAIL], data[CONF_PASSWORD])
         return {"title": f"ToyBox ({data[CONF_EMAIL]})"}
     except AuthenticationError as err:
