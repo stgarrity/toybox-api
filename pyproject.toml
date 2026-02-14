@@ -23,6 +23,6 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sgarrity/ha-toybox"
-Repository = "https://github.com/sgarrity/ha-toybox"
-Issues = "https://github.com/sgarrity/ha-toybox/issues"
+Homepage = "https://github.com/sgarrity/toybox-api"
+Repository = "https://github.com/sgarrity/toybox-api"
+Issues = "https://github.com/sgarrity/toybox-api/issues"
