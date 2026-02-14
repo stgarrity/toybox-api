@@ -1,70 +1,70 @@
-# ToyBox 3D Printer — Home Assistant Integration
+# toybox-api — Python Client for ToyBox 3D Printers
 
-Custom Home Assistant integration for the [ToyBox 3D Printer](https://www.toybox.com/) via the [make.toys](https://www.make.toys) platform.
+Async Python client for [ToyBox 3D printers](https://www.toybox.com/) via the [make.toys](https://www.make.toys) Meteor DDP protocol.
+
+Used by the [Home Assistant integration](https://github.com/sgarrity/homeassistant-toybox).
 
 ## Features
 
-- **Printer status** — idle, printing, completed, error
-- **Current print name** — what's printing right now
-- **Print progress** — percentage complete
-- **Time remaining** — estimated time left on the current print
-- **Time elapsed** — how long the current print has been running
-- **Last print** — name and status of the most recent completed print
-- **Printer online** — connectivity status
-- **Printing active** — binary sensor for automations
-
-### Dynamic Polling
-
-- **5 minutes** when the printer is idle
-- **30 seconds** when a print is actively running
+- Meteor DDP WebSocket client (no REST — make.toys is DDP-only)
+- Authentication via Meteor accounts
+- Real-time printer state via DDP subscriptions (`printerStates` collection)
+- Print job tracking via `toyPrints` collection
+- Time remaining / elapsed / progress calculations matching make.toys web app logic
 
 ## Installation
 
-### HACS (Custom Repository)
+```bash
+pip install toybox-api
+```
 
-1. Open HACS → Integrations → ⋮ → Custom repositories
-2. Add: `https://github.com/sgarrity/ha-toybox`
-3. Category: Integration
-4. Install from HACS
-5. Restart Home Assistant
-6. Go to Settings → Devices & Services → Add Integration → "ToyBox 3D Printer"
-7. Enter your make.toys email and password
+## Usage
 
-### Manual Installation
+```python
+import asyncio
+from toybox_api import ToyBoxClient
 
-1. Copy `custom_components/toybox/` to your Home Assistant `config/custom_components/` directory
-2. Copy `toybox_api/` to your Home Assistant `config/custom_components/` directory (or install from PyPI when available)
-3. Restart Home Assistant
-4. Add the integration via Settings → Devices & Services
+async def main():
+    async with ToyBoxClient() as client:
+        await client.connect()
+        await client.authenticate("email@example.com", "password")
+        await client.subscribe_to_printer_data(["printer_id"])
+
+        data = await client.get_all_data()
+        print(f"Printer: {data.printer.display_name}")
+        print(f"Online: {data.printer.is_online}")
+        print(f"State: {data.print_state}")
+
+        if data.current_request:
+            print(f"Printing: {data.current_request.print_name}")
+            print(f"Remaining: {data.current_request.remaining_seconds}s")
+
+asyncio.run(main())
+```
+
+## Data Model
+
+| Class | Source | Description |
+|-------|--------|-------------|
+| `PrinterStatus` | `printerStates` collection | Online state, model, hardware ID, firmware |
+| `PrintRequest` | `toyPrints` collection | Active/completed prints with timing data |
+| `ToyBoxData` | Coordinator container | Combines printer + current/last print request |
 
 ## Status
 
-🟡 **Beta** — The API client implements the real Meteor DDP protocol (WebSocket) with proper authentication, subscriptions, and collection sync. Time remaining is calculated from `print_completion_time - now`, matching the make.toys web app logic. Needs live testing with an active print to verify the full flow.
+🟡 **Beta** — Implements real Meteor DDP protocol. Needs live testing with active prints.
 
-## Development
-
-The project follows the two-project pattern:
+## Project Structure
 
 ```
 ha-toybox/
-├── toybox_api/              # Standalone Python API client (Meteor DDP)
+├── toybox_api/
 │   ├── __init__.py
-│   ├── client.py            # DDP WebSocket client
-│   ├── models.py            # Data models (matches Meteor schemas)
-│   ├── exceptions.py        # Custom exceptions
-│   └── const.py             # DDP URLs, subscription/method names
-├── custom_components/
-│   └── toybox/              # Home Assistant integration
-│       ├── __init__.py      # Integration setup
-│       ├── manifest.json    # HA metadata
-│       ├── config_flow.py   # UI configuration
-│       ├── coordinator.py   # Data polling with dynamic interval
-│       ├── sensor.py        # Sensor entities
-│       ├── binary_sensor.py # Binary sensor entities
-│       ├── const.py         # Constants
-│       └── translations/
-│           └── en.json
-├── hacs.json
+│   ├── client.py        # DDP WebSocket client
+│   ├── models.py        # PrinterStatus, PrintRequest, ToyBoxData
+│   ├── exceptions.py    # ToyBoxError hierarchy
+│   └── const.py         # DDP URLs, subscription/method names
+├── pyproject.toml
 ├── LICENSE
 └── README.md
 ```
