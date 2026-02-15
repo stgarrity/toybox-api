@@ -2,7 +2,7 @@
 
 Async Python client for [ToyBox 3D printers](https://www.toybox.com/) via the [make.toys](https://www.make.toys) Meteor DDP protocol.
 
-Used by the [Home Assistant integration](https://github.com/sgarrity/homeassistant-toybox).
+Used by the [Home Assistant integration](https://github.com/stgarrity/homeassistant-toybox).
 
 ## Features
 

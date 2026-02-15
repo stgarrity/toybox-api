@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "sgarrity"}
+    {name = "stgarrity"}
 ]
 dependencies = [
     "aiohttp>=3.9.0",
@@ -23,6 +23,6 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/sgarrity/toybox-api"
-Repository = "https://github.com/sgarrity/toybox-api"
-Issues = "https://github.com/sgarrity/toybox-api/issues"
+Homepage = "https://github.com/stgarrity/toybox-api"
+Repository = "https://github.com/stgarrity/toybox-api"
+Issues = "https://github.com/stgarrity/toybox-api/issues"
