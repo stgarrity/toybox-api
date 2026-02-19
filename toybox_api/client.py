@@ -489,6 +489,15 @@ class ToyBoxClient:
                 except Exception:
                     _LOGGER.debug("Failed to fetch last completed print %s", last_print_id)
 
+        # Enrich current request with print name if missing
+        if current_request and not current_request.print_name:
+            try:
+                details = await self.get_print_request_details([current_request.id])
+                if details:
+                    current_request = PrintRequest.from_dict(details[0])
+            except Exception:
+                _LOGGER.debug("Failed to fetch current print details %s", current_request.id)
+
         return ToyBoxData(
             printer=printer,
             current_request=current_request,

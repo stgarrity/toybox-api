@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "toybox-3d-api"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python API client for ToyBox 3D printers (make.toys) via Meteor DDP"
 readme = "README.md"
 requires-python = ">=3.11"
